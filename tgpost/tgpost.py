@@ -1,12 +1,13 @@
 #!/bin/env python
 
 # -*- coding: utf-8 -*-
-import argparse, os, json
+import argparse, os
 import logging as log
 log.getLogger(__name__)
 from telegraph import Telegraph
 from telegraph.exceptions import TelegraphException
 from .config import TgPostConfig
+from .page import TgPage
 
 class TgPost(object):
     def __init__(self, config):
@@ -43,12 +44,12 @@ class TgPost(object):
                 raise SystemExit(1)
             log.debug("Got following account info: {}".format(account_info))
         
-    def publish(self, filename):
+    def publish(self):
+        raise NotImplementedError('Publish capabilities are not yet implemented')
         content = None
         with open(filename, 'r') as f:
             content = f.read()
         f.close()
-        title = raw_input("Enter post title: ")
         res = self.tg.create_page(title=title, html_content=content,
                                   author_name=self.author_name, author_url=self.author_url)
         # {u'can_edit': True, u'description': u'', u'title': u'Testing
@@ -58,25 +59,34 @@ class TgPost(object):
         # u'Testing-telegraph-API-08-22'}  
         log.debug("Created page: {}".format(res))
 
-    def new_post(self, filename):
-        md_file = "".join([self.pages_path,filename,".md"])
-        log.info("Creating file {}".format(md_file))
-        raise NotImplementedError('New post capabilities are not yet implemented')
+    def new_post(self, title):
+        if isinstance(title, list):
+            title = " ".join(title)
+        log.debug("Creating new post about: {}".format(title))
+        page = TgPage(title,
+                      author_name=self.author_name,
+                      author_url=self.author_url)
+        page.save(self.pages_path) # This is weird, I'd like to see page.save() here
 
     def edit_post(self,path):
         log.info("Editing http://telegra.ph/{}".format(path))
+        try:
+            page = self.tg.get_page(path=page)
+        except TelegraphException as exc:
+            log.error("Could not fetch the page details, error was: {}".format(exc))
+            raise SystemExit(1)
+        log.debug("Found existing page: {}".format(page))
         title = raw_input("Enter post title: ")
         filename = raw_input("Enter content file: ")
         with open(filename, 'r') as f:
             content = f.read()
         f.close()
-
         res = self.tg.edit_page(path=path, title=title, html_content=content,
                                 author_name=self.author_name, author_url=self.author_url,
                                 return_content=True)
         log.debug("Edited page: {}".format(res))
 
-    def init(self):
+    def init(self, arg):
         return
 
 if __name__ == "__main__":
@@ -94,15 +104,12 @@ if __name__ == "__main__":
     args.config_file.close()
     debug = args.debug
     action = args.action
-    param = "-".join(args.param)
-    if ' ' in param:
-        # yeah, no spaces in my param pretty please
-        param = "-".join(param.split(' '))
+    param = args.param
 
     tgpost_config = TgPostConfig(debug=debug)
     if action == 'init': # "init" is special case - it creates the actual
                          # configuration to start with
-        tgpost_config.set_name(param)
+        tgpost_config.set_name(param[0])
     tgpost_config.get_config()
     method = None
     tgpost = TgPost(tgpost_config)
